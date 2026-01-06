@@ -3,7 +3,6 @@
  (names homecook)
  (libraries
   bonsai.web
-  bonsai.web_ui_drag_and_drop
   bonsai.web_ui_form
   bonsai.web_ui_reorderable_list
   core
