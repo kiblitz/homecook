@@ -1,5 +1,5 @@
 open! Core
-open! Bonsai_web
+open! Bonsai_web.Cont
 open Bonsai.Let_syntax
 module Reorderable_list = Bonsai_web_ui_reorderable_list
 module Form = Bonsai_web_ui_form.With_automatic_view
@@ -29,8 +29,10 @@ module S =
       }
     |}]
 
-let item ~index:_ ~source _which _data ~graph =
-  let%arr text, set_text = Bonsai.state_opt ~equal:[%equal: string] () graph
+let item ~index:_ ~source _which _data graph =
+  let text, set_text = Bonsai.state_opt ~equal:[%equal: string] graph in
+  let%arr text = text
+  and set_text = set_text
   and source = source in
   let view =
     View.hbox
@@ -47,9 +49,8 @@ let item ~index:_ ~source _which _data ~graph =
 ;;
 
 let component graph =
-  let input =
+  let input, extend_input =
     Bonsai.state_machine0
-      ()
       ~sexp_of_model:[%sexp_of: Int.Set.t]
       ~equal:[%equal: Int.Set.t]
       ~sexp_of_action:[%sexp_of: Unit.t]
@@ -58,14 +59,13 @@ let component graph =
         Set.add model (Set.length model))
       graph
   in
-  let add_elem_on_cadence =
+  let () =
     Bonsai.Clock.every
       ~when_to_start_next_effect:`Every_multiple_of_period_blocking
       ~trigger_on_activate:true
       (Time_ns.Span.of_sec 1.0)
-      ((let%arr _, extend_input = input in
-        extend_input ())
-         graph)
+      (let%arr extend_input = extend_input in
+       extend_input ())
       graph
   in
   let num_lists =
@@ -85,38 +85,32 @@ let component graph =
     Reorderable_list.Multi.simple
       (module Int)
       (module Int)
-      ~extra_item_attrs:(Value.return S.transition_transform)
+      ~extra_item_attrs:(Bonsai.return S.transition_transform)
       ~default_item_height:40
-      ~render:(item ~graph)
-      ~lists:(whiches graph)
-      ~default_list:(Value.return 0)
-      ((let%arr input, _ = input in
-        input)
-         graph)
+      ~render:item
+      ~lists:whiches
+      ~default_list:(Bonsai.return 0)
+      input
       graph
   in
   let lists =
     Bonsai.assoc
       (module Int)
-      ((let%arr lists, _ = reorderable_list in
-        lists)
-         graph)
+      (let%arr lists, _ = reorderable_list in
+       lists)
       ~f:(fun which data _graph ->
-        (let%arr _, view = data
-         and which = which in
-         Vdom.Node.div
-           ~attrs:[ S.list ]
-           [ Vdom.Node.h3 [ Vdom.Node.text [%string "List %{which#Int}"] ]; view ])
-          graph)
+        let%arr _, view = data
+        and which = which in
+        Vdom.Node.div
+          ~attrs:[ S.list ]
+          [ Vdom.Node.h3 [ Vdom.Node.text [%string "List %{which#Int}"] ]; view ])
       graph
   in
-  (let%arr lists = lists
-   and num_lists = num_lists
-   and _, dragged_element = reorderable_list
-   and () = add_elem_on_cadence in
-   Vdom.Node.div
-     [ Form.view_as_vdom num_lists; View.hbox (Map.data lists); dragged_element ])
-    graph
+  let%arr lists = lists
+  and num_lists = num_lists
+  and _, dragged_element = reorderable_list in
+  Vdom.Node.div
+    [ Form.view_as_vdom num_lists; View.hbox (Map.data lists); dragged_element ]
 ;;
 
 let () = Bonsai_web.Start.start component
