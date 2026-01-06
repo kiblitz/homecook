@@ -27,7 +27,42 @@ module S =
       .transition_transform {
         transition: transform 0.3s, opacity 0.1s, background-color 0.3s;
       }
+
+      .board {
+        display: inline-grid;
+        grid-template-columns: repeat(8, 5rem);
+        grid-template-rows: repeat(8, 5rem);
+        border: 2px solid #333;
+      }
+
+      .light-square { background-color: #eeeed2; }
+      .dark-square { background-color: #769656; }
     |}]
+
+let chessboard_component graph =
+  let range = List.range 0 8 |> Int.Set.of_list |> return in
+  let grid =
+    Bonsai.assoc_set
+      (module Int)
+      range
+      graph
+      ~f:(fun rank graph ->
+        Bonsai.assoc_set
+          (module Int)
+          range
+          graph
+          ~f:(fun file _graph ->
+            let%arr rank = rank
+            and file = file in
+            let is_light = (rank + file) % 2 = 0 in
+            Vdom.Node.div
+              ~attrs:[ (if is_light then S.light_square else S.dark_square) ]
+              []))
+  in
+  let%arr grid = grid in
+  let squares = Map.data grid |> List.map ~f:Map.data |> List.concat in
+  Vdom.Node.div ~attrs:[ S.board ] squares
+;;
 
 let item ~index:_ ~source _which _data graph =
   let text, set_text = Bonsai.state_opt ~equal:[%equal: string] graph in
@@ -85,11 +120,11 @@ let component graph =
     Reorderable_list.Multi.simple
       (module Int)
       (module Int)
-      ~extra_item_attrs:(Bonsai.return S.transition_transform)
+      ~extra_item_attrs:(return S.transition_transform)
       ~default_item_height:40
       ~render:item
       ~lists:whiches
-      ~default_list:(Bonsai.return 0)
+      ~default_list:(return 0)
       input
       graph
   in
@@ -113,4 +148,7 @@ let component graph =
     [ Form.view_as_vdom num_lists; View.hbox (Map.data lists); dragged_element ]
 ;;
 
-let () = Bonsai_web.Start.start component
+let () =
+  ignore component;
+  Bonsai_web.Start.start chessboard_component
+;;
