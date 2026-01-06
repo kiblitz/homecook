@@ -112,14 +112,14 @@ module Rank = struct
   include Comparable.Make_plain (T)
 end
 
-let chessboard_component ?(width = 8) ?(height = 8) graph =
-  let files =
-    List.range 0 width |> List.map ~f:File.of_idx_exn |> File.Set.of_list |> return
-  in
-  let ranks =
-    List.range 0 height |> List.map ~f:Rank.of_idx |> Rank.Set.of_list |> return
-  in
-  let grid =
+module Chessboard = struct
+  let create ~width ~height ~create_square graph =
+    let files =
+      List.range 0 width |> List.map ~f:File.of_idx_exn |> File.Set.of_list |> return
+    in
+    let ranks =
+      List.range 0 height |> List.map ~f:Rank.of_idx |> Rank.Set.of_list |> return
+    in
     Bonsai.assoc_set
       (module File)
       files
@@ -129,51 +129,56 @@ let chessboard_component ?(width = 8) ?(height = 8) graph =
           (module Rank)
           ranks
           graph
-          ~f:(fun rank _graph ->
-            let%arr rank = rank
-            and file = file in
-            let is_light = (Rank.to_idx rank + File.to_idx file) % 2 = 0 in
-            let piece =
-              if
-                [%equal: File.t] file (File.of_char_exn 'E')
-                && [%equal: Rank.t] rank (Rank.of_int 4)
-              then Some (Vdom.Node.div ~attrs:[ S.circle; Vdom.Attr.draggable true ] [])
-              else None
-            in
-            Vdom.Node.div
-              ~attrs:
-                [ (if is_light then S.light_square else S.dark_square)
-                ; Vdom.Attr.create "coord" [%string "%{file#File}%{rank#Rank}"]
-                ; [ Css_gen.create
-                      ~field:"grid-row"
-                      ~value:[%string "%{height - Rank.to_idx rank#Int}"]
-                  ; Css_gen.create
-                      ~field:"grid-column"
-                      ~value:[%string "%{File.to_idx file + 1#Int}"]
-                  ]
-                  |> Css_gen.concat
-                  |> Vdom.Attr.style
-                ]
-              (Option.to_list piece)))
-  in
-  let%arr grid = grid in
-  let squares = Map.data grid |> List.map ~f:Map.data |> List.concat in
-  Vdom.Node.div
-    ~attrs:
-      [ [ Css_gen.display `Inline_grid
-        ; Css_gen.create
-            ~field:"grid-template-columns"
-            ~value:[%string "repeat(%{width#Int},5rem)"]
-        ; Css_gen.create
-            ~field:"grid-template-rows"
-            ~value:[%string "repeat(%{height#Int},5rem)"]
-        ; Css_gen.border ~width:(`Px 2) ~color:(`Hex "#333") ~style:`Solid ()
+          ~f:(fun rank graph -> create_square ~rank ~file ~graph))
+  ;;
+
+  let component ?(width = 8) ?(height = 8) graph =
+    let create_square ~rank ~file ~graph:_ =
+      let%arr rank = rank
+      and file = file in
+      let is_light = (Rank.to_idx rank + File.to_idx file) % 2 = 0 in
+      let piece =
+        if
+          [%equal: File.t] file (File.of_char_exn 'E')
+          && [%equal: Rank.t] rank (Rank.of_int 4)
+        then Some (Vdom.Node.div ~attrs:[ S.circle; Vdom.Attr.draggable true ] [])
+        else None
+      in
+      Vdom.Node.div
+        ~attrs:
+          [ (if is_light then S.light_square else S.dark_square)
+          ; Vdom.Attr.create "coord" [%string "%{file#File}%{rank#Rank}"]
+          ; [ Css_gen.create
+                ~field:"grid-row"
+                ~value:[%string "%{height - Rank.to_idx rank#Int}"]
+            ; Css_gen.create
+                ~field:"grid-column"
+                ~value:[%string "%{File.to_idx file + 1#Int}"]
+            ]
+            |> Css_gen.concat
+            |> Vdom.Attr.style
+          ]
+        (Option.to_list piece)
+    in
+    let%arr grid = create ~width ~height ~create_square graph in
+    let squares = Map.data grid |> List.map ~f:Map.data |> List.concat in
+    Vdom.Node.div
+      ~attrs:
+        [ [ Css_gen.display `Inline_grid
+          ; Css_gen.create
+              ~field:"grid-template-columns"
+              ~value:[%string "repeat(%{width#Int},5rem)"]
+          ; Css_gen.create
+              ~field:"grid-template-rows"
+              ~value:[%string "repeat(%{height#Int},5rem)"]
+          ; Css_gen.border ~width:(`Px 2) ~color:(`Hex "#333") ~style:`Solid ()
+          ]
+          |> Css_gen.concat
+          |> Vdom.Attr.style
         ]
-        |> Css_gen.concat
-        |> Vdom.Attr.style
-      ]
-    squares
-;;
+      squares
+  ;;
+end
 
 let item ~index:_ ~source _which _data graph =
   let text, set_text = Bonsai.state_opt ~equal:[%equal: string] graph in
@@ -261,5 +266,5 @@ let component graph =
 
 let () =
   ignore component;
-  Bonsai_web.Start.start chessboard_component
+  Bonsai_web.Start.start Chessboard.component
 ;;
