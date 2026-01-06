@@ -1,0 +1,21 @@
+(executables
+ (modes js)
+ (names homecook)
+ (libraries
+  bonsai.web
+  bonsai.web_ui_form
+  bonsai.web_ui_reorderable_list
+  core
+  virtual_dom.input_widgets)
+ (preprocess
+  (pps ppx_jane bonsai.ppx_bonsai ppx_css)))
+
+(alias
+ (name default)
+ (deps homecook.bc.js index.html))
+
+(install
+ (section bin)
+ (files
+  (index.html as index.html)
+  (homecook.bc.js as homecook.bc.js)))
