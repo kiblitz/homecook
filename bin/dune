@@ -8,7 +8,7 @@
   core
   virtual_dom.input_widgets)
  (preprocess
-  (pps ppx_jane bonsai.ppx_bonsai ppx_css)))
+  (pps bonsai.ppx_bonsai js_of_ocaml-ppx ppx_jane ppx_css)))
 
 (alias
  (name default)
