@@ -162,7 +162,7 @@ let component ?(width = 8) ?(height = 8) graph =
                [ Stylesheet.circle
                ; Vdom.Attr.draggable true
                ; Vdom.Attr.on_dragstart (fun (_ : Js_of_ocaml.Dom_html.dragEvent Js.t) ->
-                   set_state (Hover_square square))
+                   Effect.all_unit [ set_state (Hover_square square) ])
                ; Vdom.Attr.on_dragend (fun (_ : Js_of_ocaml.Dom_html.dragEvent Js.t) ->
                    match state.hover_square with
                    | None -> set_state Unhover_square
@@ -180,7 +180,9 @@ let component ?(width = 8) ?(height = 8) graph =
         [ (if is_light then Stylesheet.light_square else Stylesheet.dark_square)
         ; Vdom.Attr.create "coord" (Square.to_string square)
         ; Vdom.Attr.on_dragenter (fun (_ : Js_of_ocaml.Dom_html.dragEvent Js.t) ->
-            set_state (Hover_square square))
+            Effect.all_unit [ set_state (Hover_square square) ])
+        ; Vdom.Attr.on_dragover (fun (_ : Js_of_ocaml.Dom_html.dragEvent Js.t) ->
+            Effect.Prevent_default)
         ; [ Css_gen.create
               ~field:"grid-row"
               ~value:[%string "%{height - Rank.to_idx rank#Int}"]
