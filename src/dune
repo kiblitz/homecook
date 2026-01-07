@@ -1,0 +1,7 @@
+(library
+ (name homecook_lib)
+ (public_name homecook.lib)
+ (inline_tests)
+ (libraries core)
+ (preprocess
+  (pps ppx_expect ppx_jane)))

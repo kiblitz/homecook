@@ -6,16 +6,17 @@
   bonsai.web_ui_form
   bonsai.web_ui_reorderable_list
   core
+  homecook_lib
   virtual_dom.input_widgets)
  (preprocess
   (pps bonsai.ppx_bonsai js_of_ocaml-ppx ppx_jane ppx_css)))
 
-(alias
- (name default)
- (deps homecook.bc.js index.html))
+(copy_files
+ (files ../resources/*))
 
 (install
  (section bin)
  (files
-  (index.html as index.html)
-  (homecook.bc.js as homecook.bc.js)))
+  index.html
+  homecook.bc.js
+  (glob_files *.svg)))

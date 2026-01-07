@@ -157,9 +157,14 @@ let component ?(width = 8) ?(height = 8) graph =
       if [%equal: Square.t] square state.piece_square
       then
         Some
-          (Vdom.Node.div
+          (Vdom.Node.img
              ~attrs:
-               [ Stylesheet.circle
+               [ Vdom.Attr.src (Util.Resources.Piece.svg White Bishop)
+               ; [ Css_gen.width (`Percent Percent.one_hundred_percent)
+                 ; Css_gen.height (`Percent Percent.one_hundred_percent)
+                 ]
+                 |> Css_gen.concat
+                 |> Vdom.Attr.style
                ; Vdom.Attr.draggable true
                ; Vdom.Attr.on_dragstart (fun (_ : Js_of_ocaml.Dom_html.dragEvent Js.t) ->
                    Effect.all_unit [ set_state (Hover_square square) ])
@@ -172,7 +177,7 @@ let component ?(width = 8) ?(height = 8) graph =
                        ; set_state Unhover_square
                        ])
                ]
-             [])
+             ())
       else None
     in
     Vdom.Node.div
