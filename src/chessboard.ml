@@ -139,12 +139,50 @@ module Standard : Ruleset = struct
     |> List.filter_map ~f:Next_square_result.to_option
   ;;
 
+  let valid_bishop_squares t ~(source : Square.t) =
+    let d_squares =
+      let%map.List d_file = [ -1; 1 ]
+      and d_rank = [ -1; 1 ] in
+      let d_square = { Square.Delta.file = d_file; rank = d_rank } in
+      List.init 7 ~f:(Fn.const d_square)
+    in
+    List.concat_map d_squares ~f:(fun d_squares -> next_squares t ~source ~d_squares)
+  ;;
+
+  let valid_rook_squares t ~(source : Square.t) =
+    let d_squares =
+      let%bind.List d = [ -1; 1 ] in
+      let d_square_rank = { Square.Delta.file = 0; rank = d } in
+      let d_square_file = { Square.Delta.file = d; rank = 0 } in
+      let%map.List d_square = [ d_square_rank; d_square_file ] in
+      List.init 7 ~f:(Fn.const d_square)
+    in
+    List.concat_map d_squares ~f:(fun d_squares -> next_squares t ~source ~d_squares)
+  ;;
+
+  let valid_king_squares t ~(source : Square.t) =
+    let d_squares =
+      let d = [ -1; 0; 1 ] in
+      let%bind.List d_file = d
+      and d_rank = d in
+      if d_rank = 0 && d_file = 0
+      then []
+      else [ { Square.Delta.file = d_file; rank = d_rank } ]
+    in
+    d_squares
+    |> List.map ~f:(fun d_square -> next_square t ~source ~d_square)
+    |> List.filter_map ~f:Next_square_result.to_option
+  ;;
+
   let valid_squares t ~source =
     (let%map.Option piece = Map.find t.pieces source in
      match (piece.kind : Piece_kind.t) with
      | Pawn -> valid_pawn_squares t ~source
      | Knight -> valid_knight_squares t ~source
-     | _ (* TODO *) -> [])
+     | Bishop -> valid_bishop_squares t ~source
+     | Rook -> valid_rook_squares t ~source
+     | Queen -> valid_bishop_squares t ~source @ valid_rook_squares t ~source
+     | King -> valid_king_squares t ~source)
     |> Option.value ~default:[]
     |> Square.Set.of_list
   ;;
