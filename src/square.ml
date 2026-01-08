@@ -8,6 +8,13 @@ module T = struct
   [@@deriving compare, equal, sexp_of]
 end
 
+module Delta = struct
+  type t =
+    { file : int
+    ; rank : int
+    }
+end
+
 include T
 
 let to_string { file; rank } = [%string "%{file#File}%{rank#Rank}"]
@@ -18,9 +25,9 @@ let validate ?file_upper_bound ?rank_upper_bound { file; rank } =
   { file; rank }
 ;;
 
-let ( + ) { file; rank } (x, y) =
-  let%map.Or_error file = File.(file + x)
-  and rank = Rank.(rank + y) in
+let ( + ) { file; rank } { Delta.file = d_file; rank = d_rank } =
+  let%map.Or_error file = File.(file + d_file)
+  and rank = Rank.(rank + d_rank) in
   { file; rank }
 ;;
 

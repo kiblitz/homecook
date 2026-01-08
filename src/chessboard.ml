@@ -44,11 +44,11 @@ module Next_square_result = struct
   ;;
 end
 
-let next_square ?(can_take = true) { pieces; to_move } ~source ~d_file ~d_rank
+let next_square ?(can_take = true) { pieces; to_move } ~source ~d_square
   : Next_square_result.t
   =
   let next_square =
-    (let%bind.Or_error next_square = Square.(source + (d_file, d_rank)) in
+    (let%bind.Or_error next_square = Square.(source + d_square) in
      Square.validate ~file_upper_bound:'H' ~rank_upper_bound:8 next_square)
     |> Or_error.ok
   in
@@ -67,10 +67,10 @@ let next_squares ?(can_take = true) t ~source ~d_squares =
   List.folding_map
     d_squares
     ~init:(Next_square_result.Some source)
-    ~f:(fun source (d_file, d_rank) ->
+    ~f:(fun source d_square ->
       let next_square =
         match source with
-        | Some source -> next_square ~can_take t ~source ~d_file ~d_rank
+        | Some source -> next_square ~can_take t ~source ~d_square
         | None | Taken (_ : Square.t) -> None
       in
       next_square, next_square)
@@ -110,24 +110,40 @@ module Standard : Ruleset = struct
     in
     let forward =
       let d_squares =
+        let d_square d_rank = { Square.Delta.file = 0; rank = d_rank } in
         if [%equal: Rank.t] source.rank starting_rank
-        then [ 0, d_rank; 0, d_rank ]
-        else [ 0, d_rank ]
+        then [ d_square d_rank; d_square d_rank ]
+        else [ d_square d_rank ]
       in
       next_squares ~can_take:false t ~source ~d_squares
     in
     let capture =
       [ -1; 1 ]
-      |> List.map ~f:(fun d_file -> next_square t ~source ~d_file ~d_rank)
+      |> List.map ~f:(fun d_file ->
+        next_square t ~source ~d_square:{ file = d_file; rank = d_rank })
       |> List.filter_map ~f:Next_square_result.to_option
     in
     capture @ forward
+  ;;
+
+  let valid_knight_squares t ~(source : Square.t) =
+    let d_squares =
+      let%bind.List abs_d_file = [ 1; 2 ] in
+      let%bind.List d_file = [ -abs_d_file; abs_d_file ] in
+      let abs_d_rank = if abs_d_file = 1 then 2 else 1 in
+      let%map.List d_rank = [ -abs_d_rank; abs_d_rank ] in
+      { Square.Delta.file = d_file; rank = d_rank }
+    in
+    d_squares
+    |> List.map ~f:(fun d_square -> next_square t ~source ~d_square)
+    |> List.filter_map ~f:Next_square_result.to_option
   ;;
 
   let valid_squares t ~source =
     (let%map.Option piece = Map.find t.pieces source in
      match (piece.kind : Piece_kind.t) with
      | Pawn -> valid_pawn_squares t ~source
+     | Knight -> valid_knight_squares t ~source
      | _ (* TODO *) -> [])
     |> Option.value ~default:[]
     |> Square.Set.of_list
