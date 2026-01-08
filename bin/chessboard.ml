@@ -59,9 +59,8 @@ module State = struct
            let pieces =
              let%bind.Option piece_drag_square = t.piece_drag_square in
              let%map.Option piece = Map.find t.chessboard.pieces piece_drag_square in
-             Map.remove
-               (Map.set t.chessboard.pieces ~key:new_square ~data:piece)
-               piece_drag_square
+             Map.remove t.chessboard.pieces piece_drag_square
+             |> Map.set ~key:new_square ~data:piece
            in
            (match pieces with
             | None ->
