@@ -4,3 +4,5 @@ type t =
   | White
   | Black
 [@@deriving equal, sexp_of, to_string]
+
+val swap : t -> t

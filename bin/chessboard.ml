@@ -38,7 +38,7 @@ module State = struct
   end
 
   let default =
-    { chessboard = Homecook_lib.Chessboard.standard
+    { chessboard = Homecook_lib.Chessboard.Standard.default
     ; piece_drag_square = None
     ; hover_square = None
     }
@@ -72,10 +72,16 @@ end
 
 let create ~width ~height ~create_square graph =
   let files =
-    List.range 0 width |> List.map ~f:File.of_idx_exn |> File.Set.of_list |> return
+    List.range 0 width
+    |> List.map ~f:(File.of_idx >> ok_exn)
+    |> File.Set.of_list
+    |> return
   in
   let ranks =
-    List.range 0 height |> List.map ~f:Rank.of_idx_exn |> Rank.Set.of_list |> return
+    List.range 0 height
+    |> List.map ~f:(Rank.of_idx >> ok_exn)
+    |> Rank.Set.of_list
+    |> return
   in
   Bonsai.assoc_set
     (module File)
@@ -137,7 +143,9 @@ let component ?(width = 8) ?(height = 8) graph =
     and state = state
     and set_state = set_state in
     let square = { Square.file; rank } in
-    let is_light = (Rank.to_idx rank + File.to_idx file) % 2 = 1 in
+    let is_light =
+      ((Rank.to_idx rank |> ok_exn) + (File.to_idx file |> ok_exn)) % 2 = 1
+    in
     let is_selected = Option.exists state.hover_square ~f:([%equal: Square.t] square) in
     let piece_img = piece_img ~state ~set_state ~square in
     Vdom.Node.div
@@ -153,10 +161,10 @@ let component ?(width = 8) ?(height = 8) graph =
             Effect.Prevent_default)
         ; [ Css_gen.create
               ~field:"grid-row"
-              ~value:[%string "%{height - Rank.to_idx rank#Int}"]
+              ~value:[%string "%{height - (Rank.to_idx rank |> ok_exn)#Int}"]
           ; Css_gen.create
               ~field:"grid-column"
-              ~value:[%string "%{File.to_idx file + 1#Int}"]
+              ~value:[%string "%{(File.to_idx file |> ok_exn) + 1#Int}"]
           ]
           |> Css_gen.concat
           |> Vdom.Attr.style

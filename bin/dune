@@ -6,6 +6,7 @@
   bonsai.web_ui_form
   bonsai.web_ui_reorderable_list
   core
+  core_kernel.composition_infix
   homecook_lib
   virtual_dom.input_widgets)
  (preprocess
