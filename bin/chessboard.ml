@@ -1,73 +1,6 @@
 open! Core
 open! Import
 
-module File = struct
-  module T : sig
-    type t [@@deriving compare, sexp_of]
-
-    val to_string : t -> string
-    val of_idx_exn : int -> t
-    val of_char_exn : char -> t
-    val to_idx : t -> int
-  end = struct
-    type t = char [@@deriving compare, sexp_of]
-
-    let to_string = Char.to_string
-    let is_valid_char c = Char.('A' <= c && c <= 'Z')
-
-    let of_idx_exn i =
-      let alpha_adjusted_i = i + Char.to_int 'A' in
-      match Char.of_int alpha_adjusted_i with
-      | Some c when is_valid_char c -> c
-      | Some c -> raise_s [%message "max 26 files" (c : char)]
-      | None ->
-        raise_s [%message "char encoding out of range" (i : int) (alpha_adjusted_i : int)]
-    ;;
-
-    let to_idx t = Char.to_int t - Char.to_int 'A'
-
-    let of_char_exn t =
-      if is_valid_char t
-      then t
-      else raise_s [%message "Invalid char, expected capital alpha" (t : char)]
-    ;;
-  end
-
-  include T
-  include Comparable.Make_plain (T)
-end
-
-module Rank = struct
-  module T : sig
-    type t [@@deriving compare, sexp_of]
-
-    val to_string : t -> string
-    val of_idx : int -> t
-    val to_idx : t -> int
-    val of_int : int -> t
-  end = struct
-    type t = int [@@deriving compare, sexp_of]
-
-    let to_string = Int.to_string
-    let of_idx i = i + 1
-    let to_idx t = t - 1
-    let of_int = Fn.id
-  end
-
-  include T
-  include Comparable.Make_plain (T)
-end
-
-module Square = struct
-  type t =
-    { file : File.t
-    ; rank : Rank.t
-    }
-  [@@deriving equal, sexp_of]
-
-  let to_string { file; rank } = [%string "%{file#File}%{rank#Rank}"]
-end
-
 module Stylesheet =
   [%css
     stylesheet
@@ -92,13 +25,15 @@ module Stylesheet =
 
 module State = struct
   type t =
-    { piece_square : Square.t
+    { chessboard : Homecook_lib.Chessboard.t
+    ; piece_drag_square : Square.t option
     ; hover_square : Square.t option
     }
   [@@deriving equal, sexp_of]
 
   module Action = struct
     type t =
+      | Start_piece_drag of Square.t
       | Set_piece_square of Square.t
       | Hover_square of Square.t
       | Unhover_square
@@ -106,9 +41,10 @@ module State = struct
   end
 
   let default =
-    let file = File.of_char_exn 'E' in
-    let rank = Rank.of_int 4 in
-    { piece_square = { file; rank }; hover_square = None }
+    { chessboard = Homecook_lib.Chessboard.standard
+    ; piece_drag_square = None
+    ; hover_square = None
+    }
   ;;
 
   let bonsai ?(default = default) graph =
@@ -117,8 +53,25 @@ module State = struct
       ~sexp_of_model:[%sexp_of: t]
       ~sexp_of_action:[%sexp_of: Action.t]
       ~equal
-      ~apply_action:(fun (_ : _ Bonsai.Apply_action_context.t) t -> function
-         | Set_piece_square new_square -> { t with piece_square = new_square }
+      ~apply_action:(fun (context : Action.t Bonsai.Apply_action_context.t) t -> function
+         | Start_piece_drag square -> { t with piece_drag_square = Some square }
+         | Set_piece_square new_square ->
+           let pieces =
+             let%bind.Option piece_drag_square = t.piece_drag_square in
+             let%map.Option piece = Map.find t.chessboard.pieces piece_drag_square in
+             Map.remove
+               (Map.set t.chessboard.pieces ~key:new_square ~data:piece)
+               piece_drag_square
+           in
+           (match pieces with
+            | None ->
+              Bonsai.Apply_action_context.schedule_event
+                context
+                (Effect.print_s
+                   [%message
+                     "Attempted to move piece but no source square assigned" (t : t)]);
+              t
+            | Some pieces -> { t with chessboard = { pieces }; piece_drag_square = None })
          | Hover_square new_square -> { t with hover_square = Some new_square }
          | Unhover_square -> { t with hover_square = None })
       graph
@@ -130,7 +83,7 @@ let create ~width ~height ~create_square graph =
     List.range 0 width |> List.map ~f:File.of_idx_exn |> File.Set.of_list |> return
   in
   let ranks =
-    List.range 0 height |> List.map ~f:Rank.of_idx |> Rank.Set.of_list |> return
+    List.range 0 height |> List.map ~f:Rank.of_idx_exn |> Rank.Set.of_list |> return
   in
   Bonsai.assoc_set
     (module File)
@@ -154,31 +107,27 @@ let component ?(width = 8) ?(height = 8) graph =
     let square = { Square.file; rank } in
     let is_light = (Rank.to_idx rank + File.to_idx file) % 2 = 0 in
     let piece =
-      if [%equal: Square.t] square state.piece_square
-      then
-        Some
-          (Vdom.Node.img
-             ~attrs:
-               [ Vdom.Attr.src (Util.Resources.Piece.svg White Bishop)
-               ; [ Css_gen.width (`Percent Percent.one_hundred_percent)
-                 ; Css_gen.height (`Percent Percent.one_hundred_percent)
-                 ]
-                 |> Css_gen.concat
-                 |> Vdom.Attr.style
-               ; Vdom.Attr.draggable true
-               ; Vdom.Attr.on_dragstart (fun (_ : Js_of_ocaml.Dom_html.dragEvent Js.t) ->
-                   Effect.all_unit [ set_state (Hover_square square) ])
-               ; Vdom.Attr.on_dragend (fun (_ : Js_of_ocaml.Dom_html.dragEvent Js.t) ->
-                   match state.hover_square with
-                   | None -> set_state Unhover_square
-                   | Some hover_square ->
-                     Effect.all_unit
-                       [ set_state (Set_piece_square hover_square)
-                       ; set_state Unhover_square
-                       ])
-               ]
-             ())
-      else None
+      let%map.Option piece = Map.find state.chessboard.pieces square in
+      Vdom.Node.img
+        ~attrs:
+          [ Vdom.Attr.src (Util.Resources.Piece.svg piece)
+          ; [ Css_gen.width (`Percent Percent.one_hundred_percent)
+            ; Css_gen.height (`Percent Percent.one_hundred_percent)
+            ]
+            |> Css_gen.concat
+            |> Vdom.Attr.style
+          ; Vdom.Attr.draggable true
+          ; Vdom.Attr.on_dragstart (fun (_ : Js_of_ocaml.Dom_html.dragEvent Js.t) ->
+              Effect.all_unit
+                [ set_state (Start_piece_drag square); set_state (Hover_square square) ])
+          ; Vdom.Attr.on_dragend (fun (_ : Js_of_ocaml.Dom_html.dragEvent Js.t) ->
+              match state.hover_square with
+              | None -> set_state Unhover_square
+              | Some hover_square ->
+                Effect.all_unit
+                  [ set_state (Set_piece_square hover_square); set_state Unhover_square ])
+          ]
+        ()
     in
     Vdom.Node.div
       ~attrs:

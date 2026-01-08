@@ -3,4 +3,4 @@ open! Core
 type t =
   | White
   | Black
-[@@deriving to_string]
+[@@deriving equal, sexp_of, to_string]

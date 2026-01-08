@@ -7,6 +7,6 @@ end
 
 module Resources : sig
   module Piece : sig
-    val svg : Homecook_lib.Color.t -> Homecook_lib.Piece_kind.t -> string
+    val svg : Homecook_lib.Piece.t -> string
   end
 end

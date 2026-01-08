@@ -7,4 +7,4 @@ type t =
   | Bishop
   | Knight
   | Pawn
-[@@deriving to_string]
+[@@deriving equal, sexp_of, to_string]
