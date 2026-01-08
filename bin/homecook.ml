@@ -7,6 +7,12 @@ module Stylesheet =
   [%css
     stylesheet
       {|
+    html, body {
+      background-color: #322f2c !important;
+      margin: 0;
+      height: 100vh;
+      width: 100vw;
+    }
   |}]
 
 let () = Bonsai_web.Start.start Chessboard.component

@@ -9,17 +9,14 @@ module Stylesheet =
       display: inline-grid;
       grid-template-columns: repeat(8, 5rem);
       grid-template-rows: repeat(8, 5rem);
-      border: 2px solid #333;
+      border: 0.3vmin solid #333;
     }
 
-    .light-square { background-color: #eeeed2; }
-    .dark-square { background-color: #769656; }
+    .light-square { background-color: #f0d9b5; }
+    .dark-square { background-color: #b58863; }
 
-    .circle {
-      width: 100%;
-      height: 100%;
-      border-radius: 50%;
-      background-color: rgba(0, 0, 0, 0.5);
+    .selected-square {
+      box-shadow: inset 0 0 0 0.3vmin #f6f669;
     }
   |}]
 
@@ -53,24 +50,20 @@ module State = struct
       ~sexp_of_model:[%sexp_of: t]
       ~sexp_of_action:[%sexp_of: Action.t]
       ~equal
-      ~apply_action:(fun (context : Action.t Bonsai.Apply_action_context.t) t -> function
+      ~apply_action:(fun (_ : Action.t Bonsai.Apply_action_context.t) t -> function
          | Start_piece_drag square -> { t with piece_drag_square = Some square }
          | Set_piece_square new_square ->
-           let pieces =
+           let updated_chessboard =
              let%bind.Option piece_drag_square = t.piece_drag_square in
-             let%map.Option piece = Map.find t.chessboard.pieces piece_drag_square in
-             Map.remove t.chessboard.pieces piece_drag_square
-             |> Map.set ~key:new_square ~data:piece
+             Homecook_lib.Chessboard.move
+               t.chessboard
+               ~from:piece_drag_square
+               ~to_:new_square
            in
-           (match pieces with
-            | None ->
-              Bonsai.Apply_action_context.schedule_event
-                context
-                (Effect.print_s
-                   [%message
-                     "Attempted to move piece but no source square assigned" (t : t)]);
-              t
-            | Some pieces -> { t with chessboard = { pieces }; piece_drag_square = None })
+           (match updated_chessboard with
+            | None -> t
+            | Some updated_chessboard ->
+              { t with chessboard = updated_chessboard; piece_drag_square = None })
          | Hover_square new_square -> { t with hover_square = Some new_square }
          | Unhover_square -> { t with hover_square = None })
       graph
@@ -96,6 +89,46 @@ let create ~width ~height ~create_square graph =
         ~f:(fun rank graph -> create_square ~rank ~file ~graph))
 ;;
 
+let piece_img ~(state : State.t) ~(set_state : State.Action.t -> unit Effect.t) ~square =
+  let%map.Option piece =
+    Map.find (Homecook_lib.Chessboard.pieces state.chessboard) square
+  in
+  let drag_attrs =
+    let draggable =
+      [%equal: Homecook_lib.Color.t]
+        piece.color
+        (Homecook_lib.Chessboard.to_move state.chessboard)
+    in
+    Vdom.Attr.draggable draggable
+    ::
+    (if not draggable
+     then []
+     else
+       [ Vdom.Attr.on_dragstart (fun (_ : Js_of_ocaml.Dom_html.dragEvent Js.t) ->
+           Effect.all_unit
+             [ set_state (Start_piece_drag square); set_state (Hover_square square) ])
+       ; Vdom.Attr.on_dragend (fun (_ : Js_of_ocaml.Dom_html.dragEvent Js.t) ->
+           match state.hover_square with
+           | None -> set_state Unhover_square
+           | Some hover_square ->
+             Effect.all_unit
+               [ set_state (Set_piece_square hover_square); set_state Unhover_square ])
+       ])
+  in
+  Vdom.Node.img
+    ~attrs:
+      ([ Vdom.Attr.src (Util.Resources.Piece.svg piece)
+       ; [ Css_gen.width (`Percent Percent.one_hundred_percent)
+         ; Css_gen.height (`Percent Percent.one_hundred_percent)
+         ; Css_gen.user_select `None
+         ]
+         |> Css_gen.concat
+         |> Vdom.Attr.style
+       ]
+       @ drag_attrs)
+    ()
+;;
+
 let component ?(width = 8) ?(height = 8) graph =
   let state, set_state = State.bonsai graph in
   let create_square ~rank ~file ~graph:_ =
@@ -104,36 +137,18 @@ let component ?(width = 8) ?(height = 8) graph =
     and state = state
     and set_state = set_state in
     let square = { Square.file; rank } in
-    let is_light = (Rank.to_idx rank + File.to_idx file) % 2 = 0 in
-    let piece =
-      let%map.Option piece = Map.find state.chessboard.pieces square in
-      Vdom.Node.img
-        ~attrs:
-          [ Vdom.Attr.src (Util.Resources.Piece.svg piece)
-          ; [ Css_gen.width (`Percent Percent.one_hundred_percent)
-            ; Css_gen.height (`Percent Percent.one_hundred_percent)
-            ]
-            |> Css_gen.concat
-            |> Vdom.Attr.style
-          ; Vdom.Attr.draggable true
-          ; Vdom.Attr.on_dragstart (fun (_ : Js_of_ocaml.Dom_html.dragEvent Js.t) ->
-              Effect.all_unit
-                [ set_state (Start_piece_drag square); set_state (Hover_square square) ])
-          ; Vdom.Attr.on_dragend (fun (_ : Js_of_ocaml.Dom_html.dragEvent Js.t) ->
-              match state.hover_square with
-              | None -> set_state Unhover_square
-              | Some hover_square ->
-                Effect.all_unit
-                  [ set_state (Set_piece_square hover_square); set_state Unhover_square ])
-          ]
-        ()
-    in
+    let is_light = (Rank.to_idx rank + File.to_idx file) % 2 = 1 in
+    let is_selected = Option.exists state.hover_square ~f:([%equal: Square.t] square) in
+    let piece_img = piece_img ~state ~set_state ~square in
     Vdom.Node.div
       ~attrs:
-        [ (if is_light then Stylesheet.light_square else Stylesheet.dark_square)
-        ; Vdom.Attr.create "coord" (Square.to_string square)
+        [ Vdom.Attr.create "coord" (Square.to_string square)
+        ; (if is_light then Stylesheet.light_square else Stylesheet.dark_square)
+        ; (if is_selected then Stylesheet.selected_square else Vdom.Attr.empty)
         ; Vdom.Attr.on_dragenter (fun (_ : Js_of_ocaml.Dom_html.dragEvent Js.t) ->
-            Effect.all_unit [ set_state (Hover_square square) ])
+            if Option.is_none state.piece_drag_square
+            then Effect.Ignore
+            else Effect.all_unit [ set_state (Hover_square square) ])
         ; Vdom.Attr.on_dragover (fun (_ : Js_of_ocaml.Dom_html.dragEvent Js.t) ->
             Effect.Prevent_default)
         ; [ Css_gen.create
@@ -146,7 +161,7 @@ let component ?(width = 8) ?(height = 8) graph =
           |> Css_gen.concat
           |> Vdom.Attr.style
         ]
-      (Option.to_list piece)
+      (Option.to_list piece_img)
   in
   let%arr grid = create ~width ~height ~create_square graph
   and set_state = set_state in
