@@ -7,8 +7,6 @@ module Stylesheet =
       {|
     .board {
       display: inline-grid;
-      grid-template-columns: repeat(8, 5rem);
-      grid-template-rows: repeat(8, 5rem);
       border: 0.3vmin solid #333;
     }
 
@@ -41,6 +39,16 @@ module Stylesheet =
       top: 0; left: 0; right: 0; bottom: 0;
       border: 8px solid rgba(0, 0, 0, 0.15);
       border-radius: 50%;
+    }
+
+    .move-panel {
+      background: #454241
+    }
+
+    .move-rows {
+      display: grid;
+      grid-template-columns: 15% 1fr 1fr;
+      width: 100%;
     }
   |}]
 
@@ -161,8 +169,13 @@ let piece_img ~(state : State.t) ~(set_state : State.Action.t -> unit Effect.t) 
     ()
 ;;
 
-let component ?(width = 8) ?(height = 8) graph =
-  let state, set_state = State.bonsai graph in
+let board_component
+      ?(width = 8)
+      ?(height = 8)
+      graph
+      ~(state : State.t Bonsai.t)
+      ~set_state
+  =
   let valid_squares =
     let%arr { chessboard; piece_drag_square; hover_square = _ } = state in
     match piece_drag_square with
@@ -249,4 +262,88 @@ let component ?(width = 8) ?(height = 8) graph =
         |> Vdom.Attr.style
       ]
     squares
+;;
+
+let move_panel_component _graph ~(state : State.t Bonsai.t) ~set_state =
+  let%arr state = state
+  and _set_state = set_state in
+  let move_rows =
+    let move_rows =
+      let move_history_stack = Homecook_lib.Chessboard.history_stack state.chessboard in
+      List.concat_mapi (List.rev move_history_stack) ~f:(fun i move ->
+        (* These are (very weirdly) 1-indexed *)
+        let row = (i / 2) + 1 in
+        let col = (i % 2) + 2 in
+        let num =
+          if col <> 2
+          then None
+          else
+            Vdom.Node.div
+              ~attrs:
+                [ [ Css_gen.create ~field:"grid-row" ~value:[%string "%{row#Int}"]
+                  ; Css_gen.create ~field:"grid-column" ~value:"1"
+                  ]
+                  |> Css_gen.concat
+                  |> Vdom.Attr.style
+                ]
+              [ Vdom.Node.text [%string "%{row#Int}."] ]
+            |> Some
+        in
+        Option.to_list num
+        @ [ Vdom.Node.button
+              ~attrs:
+                [ [ Css_gen.create ~field:"grid-row" ~value:[%string "%{row#Int}"]
+                  ; Css_gen.create ~field:"grid-column" ~value:[%string "%{col#Int}"]
+                  ]
+                  |> Css_gen.concat
+                  |> Vdom.Attr.style
+                ]
+              [ Vdom.Node.text [%string "%{move.source#Square}%{move.target#Square}"] ]
+          ])
+    in
+    Vdom.Node.div ~attrs:[ Stylesheet.move_rows ] move_rows
+  in
+  let redo_undo_buttons =
+    let attrs =
+      [ [ Css_gen.flex_item ~grow:1. () ] |> Css_gen.concat |> Vdom.Attr.style ]
+    in
+    Vdom.Node.div
+      ~attrs:[ Css_gen.flex_container ~direction:`Row () |> Vdom.Attr.style ]
+      [ Vdom.Node.button ~attrs [ Vdom.Node.text "«" ]
+      ; Vdom.Node.button ~attrs [ Vdom.Node.text "‹" ]
+      ; Vdom.Node.button ~attrs [ Vdom.Node.text "›" ]
+      ; Vdom.Node.button ~attrs [ Vdom.Node.text "»" ]
+      ]
+  in
+  Vdom.Node.div
+    ~attrs:
+      [ [ Css_gen.flex_container ~direction:`Column ()
+        ; Css_gen.background_color
+            (`RGBA (Css_gen.Color.RGBA.create ~r:69 ~g:66 ~b:65 ()))
+        ]
+        |> Css_gen.concat
+        |> Vdom.Attr.style
+      ]
+    [ Vdom.Node.h3
+        ~attrs:
+          [ [ Css_gen.text_align `Center
+            ; Css_gen.padding ~left:(`Em 1) ~right:(`Em 1) ()
+            ]
+            |> Css_gen.concat
+            |> Vdom.Attr.style
+          ]
+        [ Vdom.Node.text "Move History" ]
+    ; move_rows
+    ; redo_undo_buttons
+    ]
+;;
+
+let component ?width ?height graph =
+  let state, set_state = State.bonsai graph in
+  let%arr board_component = board_component ?width ?height graph ~state ~set_state
+  and move_panel_component = move_panel_component graph ~state ~set_state in
+  Vdom.Node.div
+    ~attrs:
+      [ Css_gen.flex_container ~direction:`Row ~column_gap:(`Em 2) () |> Vdom.Attr.style ]
+    [ board_component; move_panel_component ]
 ;;

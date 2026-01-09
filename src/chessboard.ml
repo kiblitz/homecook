@@ -1,4 +1,5 @@
 open! Core
+open! Import
 
 module Move = struct
   type t =
@@ -8,10 +9,18 @@ module Move = struct
   [@@deriving equal, sexp_of]
 end
 
+module Move_historical = struct
+  type t =
+    { move : Move.t
+    ; captured_piece : Piece.t option
+    }
+  [@@deriving equal, fields ~getters, sexp_of]
+end
+
 type t =
   { pieces : Piece.t Square.Map.t
   ; to_move : Color.t
-  ; history_stack : Move.t list
+  ; history_stack : Move_historical.t list
   }
 [@@deriving equal, fields ~getters, sexp_of]
 
@@ -229,6 +238,27 @@ let move
   then None
   else (
     let to_move = Color.swap to_move in
+    let move_historical =
+      { Move_historical.move; captured_piece = Map.find pieces move.target }
+    in
     let pieces = Map.remove pieces move.source |> Map.set ~key:move.target ~data:piece in
-    Some { pieces; to_move; history_stack = move :: history_stack })
+    Some { pieces; to_move; history_stack = move_historical :: history_stack })
+;;
+
+let history_stack = history_stack >> List.map ~f:Move_historical.move
+
+let undo ({ pieces; to_move; history_stack } as t) =
+  match history_stack with
+  | [] -> Or_error.error_s [%message "Cannot undo empty history" (t : t)]
+  | move_historical :: history_stack ->
+    let%map.Or_error moved_piece = Map.find_or_error pieces move_historical.move.target in
+    let pieces =
+      pieces
+      |> Map.set ~key:move_historical.move.source ~data:moved_piece
+      |> Fn.flip
+           Map.change
+           move_historical.move.target
+           ~f:(Fn.const move_historical.captured_piece)
+    in
+    { pieces; to_move = Color.swap to_move; history_stack }
 ;;

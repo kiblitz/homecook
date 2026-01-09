@@ -2,6 +2,6 @@
  (name homecook_lib)
  (public_name homecook.lib)
  (inline_tests)
- (libraries core)
+ (libraries core core_kernel.composition_infix)
  (preprocess
   (pps ppx_expect ppx_jane)))
