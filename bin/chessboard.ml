@@ -81,8 +81,10 @@ module State = struct
              let%bind.Option piece_drag_square = t.piece_drag_square in
              Homecook_lib.Chessboard.move
                t.chessboard
-               ~from:piece_drag_square
-               ~to_:new_square
+               ~move:
+                 { Homecook_lib.Chessboard.Move.source = piece_drag_square
+                 ; target = new_square
+                 }
            in
            let t = { t with piece_drag_square = None } in
            (match updated_chessboard with

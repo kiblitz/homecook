@@ -1,8 +1,17 @@
 open! Core
 
+module Move = struct
+  type t =
+    { source : Square.t
+    ; target : Square.t
+    }
+  [@@deriving equal, sexp_of]
+end
+
 type t =
   { pieces : Piece.t Square.Map.t
   ; to_move : Color.t
+  ; history_stack : Move.t list
   }
 [@@deriving equal, fields ~getters, sexp_of]
 
@@ -44,7 +53,11 @@ module Next_square_result = struct
   ;;
 end
 
-let next_square ?(can_take = true) { pieces; to_move } ~source ~d_square
+let next_square
+      ?(can_take = true)
+      { pieces; to_move; history_stack = _ }
+      ~source
+      ~d_square
   : Next_square_result.t
   =
   let next_square =
@@ -98,7 +111,7 @@ module Standard : Ruleset = struct
       |> add 'G' 2 Pawn
       |> add 'H' 2 Pawn
     in
-    { pieces; to_move = White }
+    { pieces; to_move = White; history_stack = [] }
   ;;
 
   let valid_pawn_squares t ~(source : Square.t) =
@@ -202,14 +215,20 @@ let valid_squares ?(ruleset = (module Standard : Ruleset)) t ~source =
   Ruleset.valid_squares t ~source
 ;;
 
-let is_legal ?ruleset t ~from ~to_ = Set.mem (valid_squares ?ruleset t ~source:from) to_
+let is_legal ?ruleset t ~(move : Move.t) =
+  Set.mem (valid_squares ?ruleset t ~source:move.source) move.target
+;;
 
-let move ?(ruleset = (module Standard : Ruleset)) ({ pieces; to_move } as t) ~from ~to_ =
-  let%bind.Option piece = Map.find pieces from in
-  if not (is_legal t ~ruleset ~from ~to_)
+let move
+      ?(ruleset = (module Standard : Ruleset))
+      ({ pieces; to_move; history_stack } as t)
+      ~(move : Move.t)
+  =
+  let%bind.Option piece = Map.find pieces move.source in
+  if not (is_legal t ~ruleset ~move)
   then None
   else (
     let to_move = Color.swap to_move in
-    let pieces = Map.remove pieces from |> Map.set ~key:to_ ~data:piece in
-    Some { pieces; to_move })
+    let pieces = Map.remove pieces move.source |> Map.set ~key:move.target ~data:piece in
+    Some { pieces; to_move; history_stack = move :: history_stack })
 ;;

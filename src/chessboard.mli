@@ -7,9 +7,17 @@ module type Ruleset = sig
   val valid_squares : t -> source:Square.t -> Square.Set.t
 end
 
+module Move : sig
+  type t =
+    { source : Square.t
+    ; target : Square.t
+    }
+  [@@deriving equal, sexp_of]
+end
+
 val valid_squares : ?ruleset:(module Ruleset) -> t -> source:Square.t -> Square.Set.t
 val pieces : t -> Piece.t Square.Map.t
 val to_move : t -> Color.t
-val move : ?ruleset:(module Ruleset) -> t -> from:Square.t -> to_:Square.t -> t option
+val move : ?ruleset:(module Ruleset) -> t -> move:Move.t -> t option
 
 module Standard : Ruleset
