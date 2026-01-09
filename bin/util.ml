@@ -14,3 +14,5 @@ module Resources = struct
     ;;
   end
 end
+
+let maybe_attr condition ~attr = if condition then attr else Vdom.Attr.empty

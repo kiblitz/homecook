@@ -12,11 +12,35 @@ module Stylesheet =
       border: 0.3vmin solid #333;
     }
 
-    .light-square { background-color: #f0d9b5; }
-    .dark-square { background-color: #b58863; }
+    .light-square {
+      position: relative;
+      background-color: #f0d9b5;
+    }
+
+    .dark-square {
+      position: relative;
+      background-color: #b58863;
+    }
 
     .selected-square {
       box-shadow: inset 0 0 0 0.3vmin #f6f669;
+    }
+
+    .possible-move-dot {
+      position: absolute;
+      width: 30%;
+      height: 30%;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.15);
+      border-radius: 50%;
+      margin: auto;
+    }
+
+    .capturable-frame {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      border: 8px solid rgba(0, 0, 0, 0.15);
+      border-radius: 50%;
     }
   |}]
 
@@ -60,10 +84,10 @@ module State = struct
                ~from:piece_drag_square
                ~to_:new_square
            in
+           let t = { t with piece_drag_square = None } in
            (match updated_chessboard with
             | None -> t
-            | Some updated_chessboard ->
-              { t with chessboard = updated_chessboard; piece_drag_square = None })
+            | Some updated_chessboard -> { t with chessboard = updated_chessboard })
          | Hover_square new_square -> { t with hover_square = Some new_square }
          | Unhover_square -> { t with hover_square = None })
       graph
@@ -114,11 +138,11 @@ let piece_img ~(state : State.t) ~(set_state : State.Action.t -> unit Effect.t) 
            Effect.all_unit
              [ set_state (Start_piece_drag square); set_state (Hover_square square) ])
        ; Vdom.Attr.on_dragend (fun (_ : Js_of_ocaml.Dom_html.dragEvent Js.t) ->
-           match state.hover_square with
-           | None -> set_state Unhover_square
-           | Some hover_square ->
-             Effect.all_unit
-               [ set_state (Set_piece_square hover_square); set_state Unhover_square ])
+           let hover_square = state.hover_square in
+           let%bind.Effect () = set_state Unhover_square in
+           match hover_square with
+           | None -> Effect.Ignore
+           | Some hover_square -> set_state (Set_piece_square hover_square))
        ])
   in
   Vdom.Node.img
@@ -137,12 +161,24 @@ let piece_img ~(state : State.t) ~(set_state : State.Action.t -> unit Effect.t) 
 
 let component ?(width = 8) ?(height = 8) graph =
   let state, set_state = State.bonsai graph in
+  let valid_squares =
+    let%arr { chessboard; piece_drag_square; hover_square = _ } = state in
+    match piece_drag_square with
+    | None -> Square.Set.empty
+    | Some piece_drag_square ->
+      Homecook_lib.Chessboard.valid_squares chessboard ~source:piece_drag_square
+  in
   let create_square ~rank ~file ~graph:_ =
     let%arr rank = rank
     and file = file
     and state = state
-    and set_state = set_state in
+    and set_state = set_state
+    and valid_squares = valid_squares in
     let square = { Square.file; rank } in
+    let is_valid_square = Set.mem valid_squares square in
+    let is_capturable_square =
+      is_valid_square && Map.mem (Homecook_lib.Chessboard.pieces state.chessboard) square
+    in
     let is_light =
       ((Rank.to_idx rank |> ok_exn) + (File.to_idx file |> ok_exn)) % 2 = 1
     in
@@ -152,7 +188,7 @@ let component ?(width = 8) ?(height = 8) graph =
       ~attrs:
         [ Vdom.Attr.create "coord" (Square.to_string square)
         ; (if is_light then Stylesheet.light_square else Stylesheet.dark_square)
-        ; (if is_selected then Stylesheet.selected_square else Vdom.Attr.empty)
+        ; Util.maybe_attr is_selected ~attr:Stylesheet.selected_square
         ; Vdom.Attr.on_dragenter (fun (_ : Js_of_ocaml.Dom_html.dragEvent Js.t) ->
             if Option.is_none state.piece_drag_square
             then Effect.Ignore
@@ -169,7 +205,19 @@ let component ?(width = 8) ?(height = 8) graph =
           |> Css_gen.concat
           |> Vdom.Attr.style
         ]
-      (Option.to_list piece_img)
+      ([ piece_img
+       ; Option.some_if
+           is_valid_square
+           (Vdom.Node.div
+              ~attrs:
+                [ Util.maybe_attr
+                    (is_valid_square && not is_capturable_square)
+                    ~attr:Stylesheet.possible_move_dot
+                ; Util.maybe_attr is_capturable_square ~attr:Stylesheet.capturable_frame
+                ]
+              [])
+       ]
+       |> List.filter_opt)
   in
   let%arr grid = create ~width ~height ~create_square graph
   and set_state = set_state in
