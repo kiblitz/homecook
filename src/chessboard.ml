@@ -175,29 +175,34 @@ module Standard : Ruleset = struct
   ;;
 
   let valid_squares t ~source =
-    (let%map.Option piece = Map.find t.pieces source in
-     match (piece.kind : Piece_kind.t) with
-     | Pawn -> valid_pawn_squares t ~source
-     | Knight -> valid_knight_squares t ~source
-     | Bishop -> valid_bishop_squares t ~source
-     | Rook -> valid_rook_squares t ~source
-     | Queen -> valid_bishop_squares t ~source @ valid_rook_squares t ~source
-     | King -> valid_king_squares t ~source)
+    (let%bind.Option piece = Map.find t.pieces source in
+     if not ([%equal: Color.t] piece.color t.to_move)
+     then None
+     else
+       (match (piece.kind : Piece_kind.t) with
+        | Pawn -> valid_pawn_squares t ~source
+        | Knight -> valid_knight_squares t ~source
+        | Bishop -> valid_bishop_squares t ~source
+        | Rook -> valid_rook_squares t ~source
+        | Queen -> valid_bishop_squares t ~source @ valid_rook_squares t ~source
+        | King -> valid_king_squares t ~source)
+       |> Some)
     |> Option.value ~default:[]
     |> Square.Set.of_list
+    |> Fn.flip Set.remove source
   ;;
 end
 
-let is_legal ({ pieces = _; to_move = _ } as t) ~(ruleset : (module Ruleset)) ~from ~to_ =
+let valid_squares ?(ruleset = (module Standard : Ruleset)) t ~source =
   let module Ruleset = (val ruleset) in
-  let different_square = not ([%equal: Square.t] from to_) in
-  let is_valid_square = Set.mem (Ruleset.valid_squares t ~source:from) to_ in
-  List.for_all [ different_square; is_valid_square ] ~f:Fn.id
+  Ruleset.valid_squares t ~source
 ;;
+
+let is_legal ?ruleset t ~from ~to_ = Set.mem (valid_squares ?ruleset t ~source:from) to_
 
 let move ?(ruleset = (module Standard : Ruleset)) ({ pieces; to_move } as t) ~from ~to_ =
   let%bind.Option piece = Map.find pieces from in
-  if (not ([%equal: Color.t] piece.color to_move)) || not (is_legal t ~ruleset ~from ~to_)
+  if not (is_legal t ~ruleset ~from ~to_)
   then None
   else (
     let to_move = Color.swap to_move in
