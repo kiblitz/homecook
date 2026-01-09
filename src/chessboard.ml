@@ -119,9 +119,13 @@ module Standard : Ruleset = struct
     in
     let capture =
       [ -1; 1 ]
-      |> List.map ~f:(fun d_file ->
-        next_square t ~source ~d_square:{ file = d_file; rank = d_rank })
-      |> List.filter_map ~f:Next_square_result.to_option
+      |> List.filter_map ~f:(fun d_file ->
+        let d_square = { Square.Delta.file = d_file; rank = d_rank } in
+        let%bind.Option new_square = Or_error.ok Square.(source + d_square) in
+        let%bind.Option maybe_piece_to_capture = Map.find t.pieces new_square in
+        if not ([%equal: Color.t] maybe_piece_to_capture.color t.to_move)
+        then Some new_square
+        else None)
     in
     capture @ forward
   ;;
