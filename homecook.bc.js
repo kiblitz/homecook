@@ -1,0 +1,1 @@
+../../../default/bin/homecook.bc.js
