@@ -29,7 +29,7 @@
   "js_of_ocaml"
   "js_of_ocaml-ppx"
   ("ocaml"
-   (>= "5.1.1"))
+   (= "5.1.0"))
   "ocaml-embed-file"
   "ppx_jane"
   "virtual_dom"))
