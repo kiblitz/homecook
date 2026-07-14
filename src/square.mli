@@ -4,7 +4,7 @@ type t =
   { file : File.t
   ; rank : Rank.t
   }
-[@@deriving compare, equal, sexp_of, to_string]
+[@@deriving compare, equal, sexp, to_string]
 
 module Delta : sig
   type t =

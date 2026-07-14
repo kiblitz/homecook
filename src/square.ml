@@ -5,7 +5,7 @@ module T = struct
     { file : File.t
     ; rank : Rank.t
     }
-  [@@deriving compare, equal, sexp_of]
+  [@@deriving compare, equal, sexp]
 end
 
 module Delta = struct

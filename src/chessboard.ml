@@ -6,7 +6,7 @@ module Move = struct
     { source : Square.t
     ; target : Square.t
     }
-  [@@deriving equal, sexp_of]
+  [@@deriving equal, sexp]
 end
 
 module Move_historical = struct

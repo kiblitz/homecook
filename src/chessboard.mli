@@ -12,7 +12,7 @@ module Move : sig
     { source : Square.t
     ; target : Square.t
     }
-  [@@deriving equal, sexp_of]
+  [@@deriving equal, sexp]
 end
 
 val valid_squares : ?ruleset:(module Ruleset) -> t -> source:Square.t -> Square.Set.t

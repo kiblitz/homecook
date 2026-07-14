@@ -1,6 +1,6 @@
 open! Core
 
-type t [@@deriving compare, sexp_of, to_string]
+type t [@@deriving compare, sexp, to_string]
 
 val validate : ?upper_bound:char -> t -> t Or_error.t
 val of_idx : int -> t Or_error.t
