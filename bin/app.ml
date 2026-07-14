@@ -372,7 +372,7 @@ let state_machine graph =
                            ; tries = session.tries + 1
                            ; feedback = Some "Not that move — try again."
                            }
-                     })))))
+                     }))))
       | Start_editor -> { model with editor = Some Editor.empty }
       | Exit_editor -> { model with editor = None }
       | E_set_name name ->
