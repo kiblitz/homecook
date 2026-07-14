@@ -74,18 +74,35 @@ and keep OCaml changes small and idiomatic so they land cleanly.
 
 ```
 src/            homecook_lib — pure logic, no browser deps (depends only on core)
-  color / file / rank / square / piece / piece_kind   chess primitives
+  color / file / rank / square / piece / piece_kind   chess primitives (full sexp)
   chessboard.ml   board state, move legality, history, undo, Ruleset interface
-  repertoire.ml   opening tree (variants) + per-move spaced-repetition state
-  srs.ml          spaced-repetition scheduler (time- & attempts-aware, AFK-safe)
-  san.ml          SAN / PGN parsing against generated legal moves
+  repertoire.ml   opening tree (variants) + per-move SRS state + card enumeration
+  srs.ml          spaced-repetition scheduler (attempts-aware, AFK-capped)
+  home_cook.ml    versioned, portable save file (a collection of repertoires)
 bin/            Bonsai web frontend (js_of_ocaml)
-  homecook.ml     app entry (Bonsai_web.Start.start)
-  chessboard.ml   board rendering, drag-and-drop, move panel
-  storage.ml      IndexedDB persistence + file download/upload
-  ...             editor / practice UI
+  homecook.ml     app entry (Bonsai_web.Start.start App.component)
+  app.ml          shell: Openings list, Board tab, practice session, editor
+  practice.ml     tap-to-move board renderer + practice helpers (pure)
+  chessboard.ml   free-play board rendering, drag-and-drop, move panel
+  storage.ml      localStorage persistence + .homecook file download
 resources/      piece SVGs (embedded/copied into the bundle)
 ```
+
+Storage note: persistence currently uses **localStorage** (the saved home cook
+is a small text sexp, so the synchronous API is a simpler, robust fit). The
+`Storage` module hides this behind `load`/`save`, so it can move to IndexedDB
+later without touching callers.
+
+Not yet built (natural next steps): importing a `.homecook` file (upload; the
+download half exists), SAN/PGN paste import, recall-time weighting +
+pause-on-blur in practice, and flipping board orientation when training Black.
+
+## CI note for agents
+
+`.github/workflows/preview.yml` builds any `claude/**` branch, runs the library
+tests, and publishes the compiled bundle to the `preview` branch. When the local
+sandbox can't build OCaml, push and fetch `origin/preview` to get the compiled
+`homecook.bc.js`, serve it locally, and record demos against it.
 
 ## Conventions
 
