@@ -3,6 +3,6 @@ open! Core
 type t =
   | White
   | Black
-[@@deriving equal, sexp_of, to_string]
+[@@deriving equal, sexp, to_string]
 
 val swap : t -> t

@@ -3,7 +3,7 @@ open! Core
 type t =
   | White
   | Black
-[@@deriving equal, sexp_of, to_string]
+[@@deriving equal, sexp, to_string]
 
 let swap = function
   | White -> Black
