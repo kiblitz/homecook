@@ -1,0 +1,45 @@
+name: Preview Build
+
+# Builds feature branches (not just main) so the compiled bundle can be
+# fetched and demoed without a local OCaml toolchain. Also runs the library's
+# inline tests. Publishes the static bundle to the `preview` branch.
+on:
+  push:
+    branches:
+      - 'claude/**'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up OCaml
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: 5.1.0
+
+      - name: Install dependencies
+        run: opam install . --deps-only -y
+
+      - name: Run library tests
+        run: opam exec -- dune runtest
+
+      - name: Build site
+        run: opam exec -- dune build
+
+      - name: Setup preview folder
+        run: |
+          mkdir preview_out
+          cp -rL _build/install/default/bin/* preview_out/
+          touch preview_out/.nojekyll
+
+      - name: Publish to preview branch
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: preview_out/
+          branch: preview

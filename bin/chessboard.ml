@@ -176,6 +176,13 @@ let board_component
       ~(state : State.t Bonsai.t)
       ~set_state
   =
+  (* Square size caps at 5rem on wide screens but shrinks with the viewport on
+     phones, so the whole board always fits without horizontal scrolling.
+     [vmin] keeps squares square regardless of orientation. *)
+  let square_size =
+    let n = Int.max width height in
+    sprintf "min(5rem, %.2fvmin)" (90.0 /. Float.of_int n)
+  in
   let valid_squares =
     let%arr { chessboard; piece_drag_square; hover_square = _ } = state in
     match piece_drag_square with
@@ -252,10 +259,10 @@ let board_component
       ; [ Css_gen.display `Inline_grid
         ; Css_gen.create
             ~field:"grid-template-columns"
-            ~value:[%string "repeat(%{width#Int},5rem)"]
+            ~value:[%string "repeat(%{width#Int},%{square_size})"]
         ; Css_gen.create
             ~field:"grid-template-rows"
-            ~value:[%string "repeat(%{height#Int},5rem)"]
+            ~value:[%string "repeat(%{height#Int},%{square_size})"]
         ; Css_gen.border ~width:(`Px 2) ~color:(`Hex "#333") ~style:`Solid ()
         ]
         |> Css_gen.concat
@@ -344,6 +351,14 @@ let component ?width ?height graph =
   and move_panel_component = move_panel_component graph ~state ~set_state in
   Vdom.Node.div
     ~attrs:
-      [ Css_gen.flex_container ~direction:`Row ~column_gap:(`Em 2) () |> Vdom.Attr.style ]
+      [ [ Css_gen.flex_container ~direction:`Row ~column_gap:(`Em 2) ()
+        ; (* On phones the panel wraps below the board instead of overflowing. *)
+          Css_gen.create ~field:"flex-wrap" ~value:"wrap"
+        ; Css_gen.create ~field:"row-gap" ~value:"1em"
+        ; Css_gen.create ~field:"align-items" ~value:"flex-start"
+        ]
+        |> Css_gen.concat
+        |> Vdom.Attr.style
+      ]
     [ board_component; move_panel_component ]
 ;;
