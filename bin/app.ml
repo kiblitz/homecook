@@ -78,7 +78,30 @@ module Style =
     .prompt { font-size: 1.05rem; }
     .feedback { min-height: 1.4rem; color: #c9a26b; font-weight: 600; }
     .progress { color: #9a938c; font-size: 0.85rem; }
-    .controls { display: flex; gap: 0.75rem; align-items: center; }
+    .controls { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; justify-content: center; }
+    .input {
+      background: #2b2927;
+      color: #eee;
+      border: 1px solid #555;
+      border-radius: 6px;
+      padding: 0.4rem 0.6rem;
+      font-size: 1rem;
+    }
+    .moves {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.3rem;
+      max-width: 560px;
+      justify-content: center;
+      min-height: 1.2rem;
+    }
+    .movechip {
+      background: #3b3835;
+      border-radius: 4px;
+      padding: 0.15rem 0.4rem;
+      font-size: 0.85rem;
+      color: #ddd;
+    }
   |}]
 
 let now_ms t = Time_ns.Span.to_ms (Time_ns.to_span_since_epoch t)
@@ -132,15 +155,46 @@ module Session = struct
   [@@deriving equal, sexp]
 end
 
+(* Building or modifying an opening by playing moves on the board. [lines] holds
+   already-committed variants; [line] is the one currently being played. *)
+module Editor = struct
+  type t =
+    { name : string
+    ; trainee : Color.t
+    ; lines : Move.t list list
+    ; line : Move.t list
+    ; selected : Square.t option
+    }
+  [@@deriving equal, sexp]
+
+  let empty =
+    { name = ""; trainee = Color.White; lines = []; line = []; selected = None }
+  ;;
+
+  (* Every line the editor would save: the committed ones plus the current one. *)
+  let all_lines t = t.lines @ if List.is_empty t.line then [] else [ t.line ]
+
+  let to_repertoire t =
+    let name = if String.is_empty (String.strip t.name) then "Untitled opening" else t.name in
+    List.fold
+      (all_lines t)
+      ~init:(Repertoire.create ~name ~trainee:t.trainee)
+      ~f:Repertoire.add_line
+  ;;
+end
+
 module Model = struct
   type t =
     { mode : Mode.t
     ; repertoires : Repertoire.t list
     ; practice : Session.t option
+    ; editor : Editor.t option
     }
   [@@deriving equal, sexp]
 
-  let default = { mode = Mode.Home; repertoires = []; practice = None }
+  let default =
+    { mode = Mode.Home; repertoires = []; practice = None; editor = None }
+  ;;
 
   (* Rehydrate from browser storage so a reload keeps the user's home cook. *)
   let initial () =
@@ -160,6 +214,14 @@ module Action = struct
     | P_reveal of float
     | P_next
     | Exit_practice
+    | Start_editor
+    | E_click of Square.t
+    | E_undo
+    | E_commit_line
+    | E_set_name of string
+    | E_toggle_trainee
+    | E_save
+    | Exit_editor
   [@@deriving sexp_of]
 end
 
@@ -311,6 +373,71 @@ let state_machine graph =
                            ; feedback = Some "Not that move — try again."
                            }
                      })))))
+      | Start_editor -> { model with editor = Some Editor.empty }
+      | Exit_editor -> { model with editor = None }
+      | E_set_name name ->
+        (match model.editor with
+         | None -> model
+         | Some editor -> { model with editor = Some { editor with name } })
+      | E_toggle_trainee ->
+        (match model.editor with
+         | None -> model
+         | Some editor ->
+           { model with editor = Some { editor with trainee = Color.swap editor.trainee } })
+      | E_undo ->
+        (match model.editor with
+         | None -> model
+         | Some editor ->
+           let line = Option.value (List.drop_last editor.line) ~default:[] in
+           { model with editor = Some { editor with line; selected = None } })
+      | E_commit_line ->
+        (match model.editor with
+         | None -> model
+         | Some editor ->
+           if List.is_empty editor.line
+           then model
+           else
+             { model with
+               editor =
+                 Some
+                   { editor with
+                     lines = editor.lines @ [ editor.line ]
+                   ; line = []
+                   ; selected = None
+                   }
+             })
+      | E_save ->
+        (match model.editor with
+         | None -> model
+         | Some editor ->
+           if List.is_empty (Editor.all_lines editor)
+           then { model with editor = None; mode = Mode.Home }
+           else (
+             let repertoires = model.repertoires @ [ Editor.to_repertoire editor ] in
+             persist repertoires;
+             { model with repertoires; editor = None; mode = Mode.Home }))
+      | E_click square ->
+        (match model.editor with
+         | None -> model
+         | Some editor ->
+           let position = Practice.position_after editor.line in
+           (match editor.selected with
+            | None ->
+              (match Map.find (Position.pieces position) square with
+               | Some piece when Color.equal piece.color (Position.to_move position) ->
+                 { model with editor = Some { editor with selected = Some square } }
+               | _ -> model)
+            | Some source ->
+              if [%equal: Square.t] source square
+              then { model with editor = Some { editor with selected = None } }
+              else (
+                let move = { Move.source; target = square } in
+                match Position.move position ~move with
+                | Some _ ->
+                  { model with
+                    editor = Some { editor with line = editor.line @ [ move ]; selected = None }
+                  }
+                | None -> { model with editor = Some { editor with selected = None } }))))
     graph
 ;;
 
@@ -370,9 +497,18 @@ let home_view ~(model : Model.t) ~inject ~now =
         ~attrs:[ Style.rep_list ]
         (empty
          @ rows
-         @ [ Vdom.Node.button
-               ~attrs:[ Style.btn; Vdom.Attr.on_click (fun _ -> inject Action.Add_sample) ]
-               [ Vdom.Node.text "＋ Add sample: 1.e4 e5" ]
+         @ [ Vdom.Node.div
+               ~attrs:[ Style.controls ]
+               [ Vdom.Node.button
+                   ~attrs:[ Style.btn; Vdom.Attr.on_click (fun _ -> inject Action.Start_editor) ]
+                   [ Vdom.Node.text "＋ New opening" ]
+               ; Vdom.Node.button
+                   ~attrs:
+                     [ Style.btn_ghost
+                     ; Vdom.Attr.on_click (fun _ -> inject Action.Add_sample)
+                     ]
+                   [ Vdom.Node.text "Add sample: 1.e4 e5" ]
+               ]
            ])
     ]
 ;;
@@ -457,6 +593,77 @@ let practice_view ~(session : Session.t) ~inject ~now =
   Vdom.Node.div ~attrs:[ Style.app ] [ header; Vdom.Node.div ~attrs:[ Style.body ] [ content ] ]
 ;;
 
+let editor_view ~(editor : Editor.t) ~inject =
+  let position = Practice.position_after editor.line in
+  let board =
+    Practice.render_board
+      ~position
+      ~selected:editor.selected
+      ~hint:None
+      ~on_click:(fun square -> inject (Action.E_click square))
+  in
+  let move_chip m =
+    Vdom.Node.div
+      ~attrs:[ Style.movechip ]
+      [ Vdom.Node.text [%string "%{m.Move.source#Square}%{m.Move.target#Square}"] ]
+  in
+  let header =
+    Vdom.Node.div
+      ~attrs:[ Style.header ]
+      [ Vdom.Node.button
+          ~attrs:[ Style.tab; Vdom.Attr.on_click (fun _ -> inject Action.Exit_editor) ]
+          [ Vdom.Node.text "← Cancel" ]
+      ; Vdom.Node.div ~attrs:[ Style.spacer ] []
+      ; Vdom.Node.button
+          ~attrs:[ Style.btn; Vdom.Attr.on_click (fun _ -> inject Action.E_save) ]
+          [ Vdom.Node.text "Save opening" ]
+      ]
+  in
+  let to_move = Position.to_move position in
+  let content =
+    Vdom.Node.div
+      ~attrs:[ Style.practice ]
+      [ Vdom.Node.input
+          ~attrs:
+            [ Style.input
+            ; Vdom.Attr.type_ "text"
+            ; Vdom.Attr.string_property "value" editor.name
+            ; Vdom.Attr.placeholder "Opening name"
+            ; Vdom.Attr.on_input (fun _ value -> inject (Action.E_set_name value))
+            ]
+          ()
+      ; Vdom.Node.div
+          ~attrs:[ Style.controls ]
+          [ Vdom.Node.button
+              ~attrs:[ Style.tab; Vdom.Attr.on_click (fun _ -> inject Action.E_toggle_trainee) ]
+              [ Vdom.Node.text [%string "Training as: %{Color.to_string editor.trainee}"] ]
+          ; Vdom.Node.div
+              ~attrs:[ Style.progress ]
+              [ Vdom.Node.text
+                  [%string "%{List.length editor.lines#Int} variant(s) saved"]
+              ]
+          ]
+      ; Vdom.Node.div
+          ~attrs:[ Style.prompt ]
+          [ Vdom.Node.text
+              [%string "%{Color.to_string to_move} to move — tap to add the next move"]
+          ]
+      ; board
+      ; Vdom.Node.div ~attrs:[ Style.moves ] (List.map editor.line ~f:move_chip)
+      ; Vdom.Node.div
+          ~attrs:[ Style.controls ]
+          [ Vdom.Node.button
+              ~attrs:[ Style.btn_ghost; Vdom.Attr.on_click (fun _ -> inject Action.E_undo) ]
+              [ Vdom.Node.text "Undo move" ]
+          ; Vdom.Node.button
+              ~attrs:[ Style.btn_ghost; Vdom.Attr.on_click (fun _ -> inject Action.E_commit_line) ]
+              [ Vdom.Node.text "Start another variant" ]
+          ]
+      ]
+  in
+  Vdom.Node.div ~attrs:[ Style.app ] [ header; Vdom.Node.div ~attrs:[ Style.body ] [ content ] ]
+;;
+
 let component graph =
   let state, inject = state_machine graph in
   let board = Chessboard.component graph in
@@ -466,9 +673,10 @@ let component graph =
   and board = board
   and clock = clock in
   let now = now_ms clock in
-  match model.practice with
-  | Some session -> practice_view ~session ~inject ~now
-  | None ->
+  match model.editor, model.practice with
+  | Some editor, _ -> editor_view ~editor ~inject
+  | None, Some session -> practice_view ~session ~inject ~now
+  | None, None ->
     let body =
       match model.mode with
       | Mode.Home -> home_view ~model ~inject ~now
