@@ -1,0 +1,12 @@
+{
+  "name": "homecook-demo",
+  "private": true,
+  "type": "module",
+  "description": "Playwright-based demo recorder: builds/serves the site and records mobile + desktop videos.",
+  "scripts": {
+    "record": "node record.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}
