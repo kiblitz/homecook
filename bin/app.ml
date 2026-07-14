@@ -2,6 +2,7 @@ open! Core
 open! Import
 module Repertoire = Homecook_lib.Repertoire
 module Color = Homecook_lib.Color
+module Home_cook = Homecook_lib.Home_cook
 module Move = Homecook_lib.Chessboard.Move
 
 module Style =
@@ -33,6 +34,7 @@ module Style =
       font-size: 0.95rem;
     }
     .tab-active { background: #c9a26b; color: #1c1a19; }
+    .spacer { flex: 1 1 auto; }
     .body { padding: 1rem; }
     .rep-list {
       display: flex;
@@ -106,6 +108,13 @@ module Model = struct
   [@@deriving equal, sexp]
 
   let default = { mode = Mode.Home; repertoires = [] }
+
+  (* Rehydrate from browser storage so a reload keeps the user's home cook. *)
+  let initial () =
+    match Storage.load () with
+    | Some home_cook -> { default with repertoires = home_cook.repertoires }
+    | None -> default
+  ;;
 end
 
 module Action = struct
@@ -118,19 +127,25 @@ end
 
 let state_machine graph =
   Bonsai.state_machine0
-    ~default_model:Model.default
+    ~default_model:(Model.initial ())
     ~sexp_of_model:[%sexp_of: Model.t]
     ~sexp_of_action:[%sexp_of: Action.t]
     ~equal:[%equal: Model.t]
-    ~apply_action:(fun (_ : _ Bonsai.Apply_action_context.t) (model : Model.t) action ->
+    ~apply_action:(fun ctx (model : Model.t) action ->
+      (* Mirror every repertoire change to browser storage. *)
+      let persist (model : Model.t) =
+        Bonsai.Apply_action_context.schedule_event
+          ctx
+          (Storage.save (Home_cook.create model.repertoires));
+        model
+      in
       match (action : Action.t) with
       | Set_mode mode -> { model with mode }
       | Add_sample ->
-        { model with repertoires = model.repertoires @ [ sample_repertoire () ] }
+        persist { model with repertoires = model.repertoires @ [ sample_repertoire () ] }
       | Remove i ->
-        { model with
-          repertoires = List.filteri model.repertoires ~f:(fun j _ -> j <> i)
-        })
+        persist
+          { model with repertoires = List.filteri model.repertoires ~f:(fun j _ -> j <> i) })
     graph
 ;;
 
@@ -205,6 +220,14 @@ let component graph =
             ~label:"Board"
             ~active:(Mode.equal model.mode Mode.Board)
             ~on_click:(inject (Action.Set_mode Mode.Board))
+        ; Vdom.Node.div ~attrs:[ Style.spacer ] []
+        ; Vdom.Node.button
+            ~attrs:
+              [ Style.tab
+              ; Vdom.Attr.on_click (fun _ ->
+                  Storage.download (Home_cook.create model.repertoires))
+              ]
+            [ Vdom.Node.text "⬇ Download" ]
         ]
     ; body
     ]
