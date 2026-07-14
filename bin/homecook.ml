@@ -15,4 +15,4 @@ module Stylesheet =
     }
   |}]
 
-let () = Bonsai_web.Start.start Chessboard.component
+let () = Bonsai_web.Start.start App.component
